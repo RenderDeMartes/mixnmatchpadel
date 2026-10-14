@@ -1,158 +1,40 @@
-// Where custom frames live:
-//  - server: shared with everyone, published with the admin key (api/frames.php)
-//  - local:  only on this device (IndexedDB), anyone can make them
-import { normalizeDef, detectWindow } from './frames.js';
-import { loadImage } from './scene.js';
-
-const API = 'api/frames.php';
-const KEY_STORAGE = 'mm_admin_key';
-const TOKENS_STORAGE = 'mm_owner_tokens';
-
-// ------------------------------------------------------------------ admin key
-
-export function getAdminKey() {
-  try { return localStorage.getItem(KEY_STORAGE) || ''; } catch { return ''; }
-}
-export function setAdminKey(key) {
-  try { key ? localStorage.setItem(KEY_STORAGE, key) : localStorage.removeItem(KEY_STORAGE); } catch { /* private mode */ }
-}
-
-// ------------------------------------------------------------------ owner tokens
-// Publishing returns a secret token; only the device holding it can delete that frame.
-
-function readTokens() {
-  try { return JSON.parse(localStorage.getItem(TOKENS_STORAGE) || '{}') || {}; } catch { return {}; }
-}
-function writeTokens(t) {
-  try { localStorage.setItem(TOKENS_STORAGE, JSON.stringify(t)); } catch { /* private mode */ }
-}
-export const ownerToken = (id) => readTokens()[id] || '';
-
-// ------------------------------------------------------------------ server
-
-export async function fetchServerFrames() {
-  const r = await fetch(API, { cache: 'no-store' });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  const j = await r.json();
-  return Array.isArray(j.frames) ? j.frames : [];
-}
-
-async function post(form) {
-  const r = await fetch(API, { method: 'POST', body: form });
-  let j = {};
-  try { j = await r.json(); } catch { /* non-JSON error page */ }
-  if (!r.ok || !j.ok) {
-    const err = new Error(j.error || `HTTP ${r.status}`);
-    err.status = r.status;
-    throw err;
+/* Small IndexedDB wrapper: `blobs` holds photos and uploaded images, `kv` holds
+   the current project and saved templates. Everything stays on the device. */
+(function () {
+  'use strict';
+  let dbp = null;
+  function db() {
+    if (!dbp) dbp = new Promise((res, rej) => {
+      const r = indexedDB.open('mixnmatch-marcos', 2);
+      r.onupgradeneeded = () => {
+        const d = r.result;
+        for (const n of [...d.objectStoreNames]) d.deleteObjectStore(n);
+        d.createObjectStore('blobs');
+        d.createObjectStore('kv');
+      };
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    return dbp;
   }
-  return j;
-}
-
-export async function checkAdminKey(key) {
-  const f = new FormData();
-  f.append('action', 'check');
-  f.append('key', key);
-  await post(f);
-}
-
-/** rec = { name, kind, def?, blobs: { badge?, corner?, png? } }. Anyone can publish. */
-export async function publishFrame(rec) {
-  const f = new FormData();
-  f.append('action', 'save');
-  f.append('name', rec.name);
-  f.append('kind', rec.kind);
-  if (rec.kind === 'design') f.append('def', JSON.stringify(rec.def));
-  for (const [slot, blob] of Object.entries(rec.blobs || {})) {
-    if (blob) f.append(slot, blob, `${slot}.png`);
-  }
-  const { frame, token } = await post(f);
-  writeTokens({ ...readTokens(), [frame.id]: token });
-  return frame;
-}
-
-/** Deletes with this device's owner token, or the admin key if one is stored. */
-export async function deleteServerFrame(id) {
-  const f = new FormData();
-  f.append('action', 'delete');
-  f.append('id', id);
-  const token = ownerToken(id);
-  if (token) f.append('token', token);
-  else if (getAdminKey()) f.append('key', getAdminKey());
-  await post(f);
-  const t = readTokens();
-  delete t[id];
-  writeTokens(t);
-}
-
-// ------------------------------------------------------------------ local (IndexedDB)
-
-let dbp = null;
-function db() {
-  if (!dbp) {
-    dbp = new Promise((resolve, reject) => {
-      const req = indexedDB.open('mixnmatch', 1);
-      req.onupgradeneeded = () => req.result.createObjectStore('frames', { keyPath: 'id' });
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
+  async function tx(store, mode, fn) {
+    const d = await db();
+    return new Promise((res, rej) => {
+      const t = d.transaction(store, mode), s = t.objectStore(store);
+      const req = fn(s);
+      t.oncomplete = () => res(req && req.result);
+      t.onerror = () => rej(t.error);
+      t.onabort = () => rej(t.error);
     });
   }
-  return dbp;
-}
-
-function tx(mode, fn) {
-  return db().then((d) => new Promise((resolve, reject) => {
-    const t = d.transaction('frames', mode);
-    const out = fn(t.objectStore('frames'));
-    t.oncomplete = () => resolve(out && 'result' in out ? out.result : undefined);
-    t.onerror = () => reject(t.error);
-  }));
-}
-
-export async function listLocal() {
-  try {
-    const all = await tx('readonly', (s) => s.getAll());
-    return (all || []).sort((a, b) => b.created - a.created);
-  } catch {
-    return [];
-  }
-}
-export const saveLocal = (rec) => tx('readwrite', (s) => s.put(rec));
-export const deleteLocal = (id) => tx('readwrite', (s) => s.delete(id));
-
-// ------------------------------------------------------------------ runtime frames
-
-/**
- * Turns a stored record into a frame the renderer can draw.
- * Server records carry URLs; local records carry blobs.
- */
-export async function hydrate(rec, source) {
-  const url = (slot) => {
-    if (source === 'server') return rec.files?.[slot] || null;
-    const blob = rec.blobs?.[slot];
-    return blob ? URL.createObjectURL(blob) : null;
+  const safe = p => p.catch(e => { console.warn('store', e); return undefined; });
+  window.Store = {
+    get: k => safe(tx('kv', 'readonly', s => s.get(k))),
+    set: (k, v) => safe(tx('kv', 'readwrite', s => s.put(v, k))),
+    del: k => safe(tx('kv', 'readwrite', s => s.delete(k))),
+    getBlob: k => safe(tx('blobs', 'readonly', s => s.get(k))),
+    putBlob: (k, v) => safe(tx('blobs', 'readwrite', s => s.put(v, k))),
+    delBlob: k => safe(tx('blobs', 'readwrite', s => s.delete(k))),
+    blobKeys: () => safe(tx('blobs', 'readonly', s => s.getAllKeys()))
   };
-  const base = { id: `${source}:${rec.id}`, rawId: rec.id, name: rec.name || 'Marco', source, rev: 0, seed: rec.id };
-
-  if (rec.kind === 'png') {
-    const src = url('png');
-    if (!src) return null;
-    const image = await loadImage(src);
-    const win = detectWindow(image) || { x: 0.1, y: 0.1, w: 0.8, h: 0.8 };
-    return { ...base, kind: 'png', image, w: image.naturalWidth, h: image.naturalHeight, win };
-  }
-
-  const def = normalizeDef(rec.def);
-  const images = {};
-  for (const slot of ['badge', 'corner']) {
-    const src = def[slot].type === 'image' ? url(slot) : null;
-    if (src) {
-      try { images[slot] = await loadImage(src); } catch { /* missing logo: draw without it */ }
-    }
-  }
-  return { ...base, kind: 'design', def, images };
-}
-
-export function newId() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-}
+})();

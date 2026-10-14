@@ -1,6 +1,7 @@
 <?php
 // GET  -> { frames: [...] }                              public list of shared frames
 // POST action=save   name kind def badge corner png     -> { ok, frame, token }   (anyone, rate limited)
+//                    kind=layout: def = layer JSON, img0..img4 = PNGs referenced by image layers
 // POST action=delete id token | key                     -> { ok }   (owner token, or optional admin key)
 // POST action=check  key                                -> { ok }   (verifies the optional admin key)
 require __DIR__ . '/lib.php';
@@ -49,7 +50,7 @@ try {
     if ($action === 'save') {
         if (!$isAdmin) mm_rate_limit($dataDir, isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '');
         $files = [];
-        foreach (['badge', 'corner', 'png'] as $slot) {
+        foreach (array_merge(['badge', 'corner', 'png'], MM_IMAGE_SLOTS) as $slot) {
             if (!isset($_FILES[$slot])) continue;
             $f = $_FILES[$slot];
             if ($f['error'] === UPLOAD_ERR_INI_SIZE || $f['error'] === UPLOAD_ERR_FORM_SIZE) {

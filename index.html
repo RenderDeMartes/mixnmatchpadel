@@ -1,232 +1,122 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0a0a0a">
-  <title>Mix &amp; Match Pádel — Marcos</title>
-  <meta name="description" content="Pon tu foto en un marco de Mix & Match Pádel o crea tu propio marco.">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎾</text></svg>">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;800&display=swap">
-  <link rel="stylesheet" href="styles.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#0d0d0e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Marcos · Mix &amp; Match Pádel</title>
+<link rel="icon" href="assets/mix-match-logo.png">
+<link rel="apple-touch-icon" href="assets/mix-match-logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></symbol>
+  <symbol id="i-redo" viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></symbol>
+  <symbol id="i-frames" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="1"/><rect x="7" y="7" width="10" height="10"/></symbol>
+  <symbol id="i-photo" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="1"/><circle cx="9" cy="10" r="1.6"/><path d="m21 16-5-5-8 8"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3 9 5-9 5-9-5 9-5Z"/><path d="m3 13 9 5 9-5"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="1"/><path d="M16 8V4H4v12h4"/></symbol>
+  <symbol id="i-flip" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M8 7 3 17h5V7ZM16 7l5 10h-5V7Z"/></symbol>
+  <symbol id="i-up" viewBox="0 0 24 24"><path d="m6 14 6-6 6 6"/></symbol>
+  <symbol id="i-down" viewBox="0 0 24 24"><path d="m6 10 6 6 6-6"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="1"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-unlock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="1"/><path d="M8 11V8a4 4 0 0 1 7.8-1.2"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-eyeoff" viewBox="0 0 24 24"><path d="M3 3l18 18"/><path d="M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3 3.8M6.6 6.6A17 17 0 0 0 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-share" viewBox="0 0 24 24"><path d="M12 15V4M8 8l4-4 4 4"/><path d="M5 12v8h14v-8"/></symbol>
+  <symbol id="i-dice" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="9" cy="9" r="1.2"/><circle cx="15" cy="15" r="1.2"/><circle cx="15" cy="9" r="1.2"/><circle cx="9" cy="15" r="1.2"/></symbol>
+  <symbol id="i-center" viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-move" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></symbol>
+</svg>
 
-  <input id="file" type="file" accept="image/*" hidden>
-
-  <!-- Home -->
-  <main id="step-home" class="step step--home">
-    <div class="hero">
-      <div class="brand">
-        <span class="brand__mix">MIX&amp;</span><span class="brand__match">MATCH</span>
-        <span class="brand__padel">PÁDEL</span>
-      </div>
-      <p class="hero__text">Pon tu foto en un marco del torneo o crea tu propio marco.</p>
-      <p id="pending-note" class="pending-note" hidden></p>
-      <div class="hero__actions">
-        <label class="choice choice--primary" for="file">
-          <span class="choice__icon" aria-hidden="true">📸</span>
-          <span class="choice__title">Usar un marco</span>
-          <span class="choice__sub">Sube tu foto y elige un marco</span>
-        </label>
-        <button class="choice" type="button" data-go="creator">
-          <span class="choice__icon" aria-hidden="true">🎨</span>
-          <span class="choice__title">Crear marco</span>
-          <span class="choice__sub">Textos, colores, logos o tu propio PNG</span>
-        </button>
-      </div>
-      <p class="hero__note">Tus fotos no se suben a ningún servidor: todo pasa en tu teléfono.</p>
+<div id="app" class="app">
+  <header class="topbar">
+    <div class="brand">
+      <img src="assets/mix-match-logo.png" alt="">
+      <div class="brand-text"><b>Marcos</b><span>Mix &amp; Match Pádel</span></div>
     </div>
+    <div class="top-actions">
+      <button class="icon-btn" id="undo" aria-label="Deshacer" disabled><svg><use href="#i-undo"/></svg></button>
+      <button class="icon-btn" id="redo" aria-label="Rehacer" disabled><svg><use href="#i-redo"/></svg></button>
+      <button class="btn btn-primary" id="exportBtn"><svg><use href="#i-download"/></svg><span>Guardar</span></button>
+    </div>
+  </header>
+
+  <main class="stage" id="stage">
+    <div class="canvas-wrap" id="canvasWrap">
+      <canvas id="view"></canvas>
+      <canvas id="overlay"></canvas>
+    </div>
+    <div class="loading" id="loading"><span></span>Preparando marco…</div>
   </main>
 
-  <!-- Pick frame -->
-  <section id="step-frames" class="step step--frames" hidden>
-    <header class="bar">
-      <button class="icon-btn" data-go="home" aria-label="Volver">‹</button>
-      <h1 class="bar__title">Elige un marco</h1>
-      <span class="bar__spacer"></span>
-    </header>
-    <div class="aspects" role="radiogroup" aria-label="Formato"></div>
-    <div id="frame-sections" class="frame-sections"></div>
-  </section>
-
-  <!-- Edit + export -->
-  <section id="step-edit" class="step step--edit" hidden>
-    <header class="bar">
-      <button class="icon-btn" data-go="frames" aria-label="Volver">‹</button>
-      <h1 class="bar__title">Acomoda tu foto</h1>
-      <button id="reset" class="text-btn" type="button">Reset</button>
-    </header>
-
-    <div id="stage" class="stage">
-      <canvas id="preview"></canvas>
-      <p class="stage__hint">Arrastra para mover · pellizca para zoom</p>
-    </div>
-
-    <div class="controls">
-      <div class="aspects" role="radiogroup" aria-label="Formato"></div>
-      <p class="aspect-locked" hidden>Este marco tiene su propio formato.</p>
-
-      <label class="zoom">
-        <span aria-hidden="true">−</span>
-        <input id="zoom" type="range" min="0" max="1000" value="0" aria-label="Zoom">
-        <span aria-hidden="true">+</span>
-      </label>
-
-      <div id="frame-strip" class="frame-strip"></div>
-
-      <div class="actions">
-        <label class="btn btn--ghost" for="file">Cambiar foto</label>
-        <button id="export" class="btn btn--primary" type="button">Descargar foto</button>
+  <aside class="panel" id="panel">
+    <div class="selbar" id="selbar" hidden></div>
+    <section class="sheet" id="sheet" hidden>
+      <div class="sheet-grip" id="sheetGrip"><span></span></div>
+      <div class="sheet-head">
+        <h2 id="sheetTitle"></h2>
+        <button class="icon-btn sheet-close" id="sheetClose" aria-label="Cerrar"><svg><use href="#i-close"/></svg></button>
       </div>
+      <div class="sheet-body" id="sheetBody"></div>
+    </section>
+    <nav class="tabbar" id="tabbar">
+      <button data-tab="frames"><svg><use href="#i-frames"/></svg><span>Marcos</span></button>
+      <button data-tab="photo"><svg><use href="#i-photo"/></svg><span>Foto</span></button>
+      <button data-tab="add"><svg><use href="#i-plus"/></svg><span>Agregar</span></button>
+      <button data-tab="layers"><svg><use href="#i-layers"/></svg><span>Capas</span></button>
+      <button data-tab="style"><svg><use href="#i-sliders"/></svg><span>Diseño</span></button>
+    </nav>
+  </aside>
+</div>
+
+<input type="file" id="photoInput" accept="image/*" hidden>
+<input type="file" id="imageInput" accept="image/*" hidden>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<dialog class="dialog" id="exportDialog">
+  <form method="dialog" class="dialog-card">
+    <div class="dialog-head"><h2>Guardar marco</h2><button class="icon-btn" value="cancel" aria-label="Cerrar"><svg><use href="#i-close"/></svg></button></div>
+    <div class="export-preview"><img id="exportPreview" alt="Vista previa"></div>
+    <div class="field"><span class="label">Formato</span><div class="chips" id="exportFormat"></div></div>
+    <div class="field"><span class="label">Tamaño</span><div class="chips" id="exportSize"></div></div>
+    <div class="dialog-actions">
+      <button type="button" class="btn btn-primary btn-block" id="shareBtn"><svg><use href="#i-share"/></svg><span>Compartir / Guardar en fotos</span></button>
+      <button type="button" class="btn btn-block" id="downloadBtn"><svg><use href="#i-download"/></svg><span>Descargar archivo</span></button>
     </div>
-  </section>
+  </form>
+</dialog>
 
-  <!-- Frame creator -->
-  <section id="step-creator" class="step step--creator" hidden>
-    <header class="bar">
-      <button class="icon-btn" data-go="back" aria-label="Volver">‹</button>
-      <h1 class="bar__title">Crear marco</h1>
-      <span class="bar__spacer"></span>
-    </header>
-
-    <div class="tabs" role="tablist">
-      <button class="tab" role="tab" type="button" data-tab="design" aria-selected="true">🎨 Diseñar</button>
-      <button class="tab" role="tab" type="button" data-tab="png" aria-selected="false">🖼️ Subir PNG</button>
+<dialog class="dialog" id="promptDialog">
+  <form method="dialog" class="dialog-card">
+    <div class="dialog-head"><h2 id="promptTitle"></h2></div>
+    <p class="muted" id="promptText"></p>
+    <input class="input" id="promptInput" maxlength="40" autocomplete="off">
+    <div class="dialog-actions row">
+      <button class="btn" value="cancel">Cancelar</button>
+      <button class="btn btn-primary" value="ok" id="promptOk">Aceptar</button>
     </div>
+  </form>
+</dialog>
 
-    <div class="creator">
-      <div class="creator__preview">
-        <canvas id="creator-canvas"></canvas>
-        <div class="aspects aspects--small" id="creator-aspects" role="radiogroup" aria-label="Formato de vista previa"></div>
-      </div>
-
-      <div class="creator__form">
-        <label class="field">
-          <span>Nombre del marco</span>
-          <input id="c-name" type="text" maxlength="40" placeholder="Ej. Torneo Octubre">
-        </label>
-
-        <!-- Design tab -->
-        <div data-panel="design">
-          <fieldset class="group">
-            <legend>Empieza desde</legend>
-            <div id="c-presets" class="chips"></div>
-          </fieldset>
-
-          <fieldset class="group">
-            <legend>Estilo</legend>
-            <div class="seg" data-bind="layout">
-              <button type="button" data-value="classic">Clásico</button>
-              <button type="button" data-value="podium">Podio (con lugar)</button>
-            </div>
-          </fieldset>
-
-          <fieldset class="group">
-            <legend>Colores</legend>
-            <div class="colors">
-              <label class="color"><input type="color" data-bind="colors.primary"><span>Principal</span></label>
-              <label class="color"><input type="color" data-bind="colors.bg"><span>Fondo</span></label>
-              <label class="color"><input type="color" data-bind="colors.accent"><span>Acento</span></label>
-            </div>
-            <span class="field__label">Metal (laureles, bordes, pelotas)</span>
-            <div class="chips" id="c-metals"></div>
-          </fieldset>
-
-          <fieldset class="group">
-            <legend>Logo principal (arriba izquierda)</legend>
-            <div class="seg" data-bind="badge.type">
-              <button type="button" data-value="text">Texto</button>
-              <button type="button" data-value="image">Imagen</button>
-              <button type="button" data-value="none">Ninguno</button>
-            </div>
-            <div data-when="badge.type=text" class="rows">
-              <input type="text" maxlength="24" data-bind="badge.line1" placeholder="Línea 1 (ej. MIX&)">
-              <input type="text" maxlength="24" data-bind="badge.line2" placeholder="Línea 2 (ej. MATCH)">
-              <input type="text" maxlength="24" data-bind="badge.line3" placeholder="Cinta (ej. PÁDEL)">
-            </div>
-            <div data-when="badge.type=image" class="logo-pick">
-              <label class="btn btn--ghost btn--small" for="c-badge-file">Elegir logo</label>
-              <input id="c-badge-file" type="file" accept="image/*" hidden data-logo="badge">
-              <img alt="" data-logo-preview="badge" hidden>
-              <span class="hint">PNG con fondo transparente se ve mejor.</span>
-            </div>
-          </fieldset>
-
-          <fieldset class="group">
-            <legend>Logo secundario (esquina)</legend>
-            <div class="seg" data-bind="corner.type">
-              <button type="button" data-value="text">Texto</button>
-              <button type="button" data-value="image">Imagen</button>
-              <button type="button" data-value="none">Ninguno</button>
-            </div>
-            <div data-when="corner.type=text" class="rows">
-              <input type="text" maxlength="24" data-bind="corner.line1" placeholder="Arriba (ej. ART)">
-              <input type="text" maxlength="24" data-bind="corner.line2" placeholder="Grande (ej. P[A]DEL)">
-              <input type="text" maxlength="24" data-bind="corner.line3" placeholder="Abajo (ej. CLUB)">
-              <span class="hint">Pon letras entre [corchetes] para pintarlas del color principal.</span>
-            </div>
-            <div data-when="corner.type=image" class="logo-pick">
-              <label class="btn btn--ghost btn--small" for="c-corner-file">Elegir logo</label>
-              <input id="c-corner-file" type="file" accept="image/*" hidden data-logo="corner">
-              <img alt="" data-logo-preview="corner" hidden>
-              <span class="hint">Va sobre una mancha del color de acento.</span>
-            </div>
-          </fieldset>
-
-          <fieldset class="group" data-when="layout=podium">
-            <legend>Lugar</legend>
-            <div class="place-inputs">
-              <label><span>Número</span><input type="text" maxlength="4" data-bind="place.num" placeholder="1"></label>
-              <label><span>Sufijo</span><input type="text" maxlength="6" data-bind="place.sup" placeholder="ER"></label>
-              <label class="grow"><span>Palabra</span><input type="text" maxlength="16" data-bind="place.word" placeholder="LUGAR"></label>
-            </div>
-            <span class="hint">Deja el número vacío para un texto solo, ej. CAMPEONES.</span>
-          </fieldset>
-
-          <label class="switch">
-            <input type="checkbox" data-bind="balls">
-            <span>Pelotas decorativas</span>
-          </label>
-        </div>
-
-        <!-- PNG tab -->
-        <div data-panel="png" hidden>
-          <div class="png-drop">
-            <label class="btn btn--primary" for="c-png-file">Elegir PNG del marco</label>
-            <input id="c-png-file" type="file" accept="image/png" hidden>
-            <p class="hint">Usa un PNG con el centro <b>transparente</b>: ahí va la foto. El formato de la foto final será el del PNG.</p>
-            <p id="c-png-info" class="png-info" hidden></p>
-          </div>
-        </div>
-
-        <div class="creator__actions">
-          <button id="c-use" class="btn btn--primary" type="button">Usar este marco</button>
-          <button id="c-publish" class="btn btn--ghost" type="button">Publicar para todos</button>
-          <p class="hint center">"Usar" lo guarda solo en este teléfono. "Publicar" lo comparte con todos; solo este teléfono lo podrá borrar.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <dialog id="admin-dialog" class="dialog">
-    <form method="dialog" id="admin-form">
-      <h2>Clave de admin</h2>
-      <p class="hint">Modo moderación: permite borrar cualquier marco compartido.</p>
-      <input id="admin-key" type="password" autocomplete="current-password" required minlength="8" placeholder="Clave">
-      <label class="switch"><input id="admin-remember" type="checkbox" checked><span>Recordar en este dispositivo</span></label>
-      <p id="admin-error" class="error" hidden></p>
-      <div class="dialog__actions">
-        <button type="button" class="btn btn--ghost" value="cancel" id="admin-cancel">Cancelar</button>
-        <button type="submit" class="btn btn--primary" value="ok">Continuar</button>
-      </div>
-    </form>
-  </dialog>
-
-  <div id="toast" class="toast" role="status" hidden></div>
-
-  <script type="module" src="js/app.js"></script>
+<script src="js/frame-kit.js"></script>
+<script src="js/elements.js"></script>
+<script src="js/presets.js"></script>
+<script src="js/store.js"></script>
+<script src="js/render.js"></script>
+<script src="js/editor.js"></script>
+<script src="js/app.js"></script>
 </body>
 </html>

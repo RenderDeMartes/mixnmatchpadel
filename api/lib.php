@@ -194,6 +194,63 @@ function mm_clean_def($d)
     ];
 }
 
+const MM_LAYER_TYPES = ['grunge', 'strokes', 'halftone', 'photo', 'logo', 'image', 'ball', 'speed', 'racket', 'net', 'placeBadge', 'title', 'medal', 'nameplate', 'tag', 'ribbon', 'text', 'laurels', 'crown', 'sparkle', 'flare', 'glow', 'bokeh', 'confetti', 'corners', 'ring'];
+const MM_MAX_DEF = 400000;   // bytes of layout JSON
+const MM_MAX_LAYERS = 150;
+const MM_IMAGE_SLOTS = ['img0', 'img1', 'img2', 'img3', 'img4'];
+
+/**
+ * Bounds a JSON value: scalars only at the leaves, short strings, limited depth and size.
+ * The browser re-validates every prop against its own schema before drawing anything.
+ */
+function mm_clean_value($v, $depth)
+{
+    if (is_bool($v) || is_null($v)) return $v;
+    if (is_int($v) || is_float($v)) return is_finite($v) ? $v : 0;
+    if (is_string($v)) return mm_str($v, '', 200);
+    if (is_array($v) && $depth > 0) {
+        $out = [];
+        $n = 0;
+        foreach ($v as $k => $item) {
+            if (++$n > 60) break;
+            if (is_string($k) && !preg_match('/^[A-Za-z0-9_]{1,24}$/', $k)) continue;
+            $out[$k] = mm_clean_value($item, $depth - 1);
+        }
+        return $out;
+    }
+    return null;
+}
+
+/**
+ * Validates a layer-based frame. $images maps slot (img0..img4) => public url of an
+ * already-stored PNG; image layers referencing a slot get that url instead.
+ */
+function mm_clean_layout($raw, $images)
+{
+    if (!is_string($raw) || strlen($raw) > MM_MAX_DEF) throw new MmError(413, 'El marco es demasiado grande.');
+    $d = json_decode($raw, true);
+    if (!is_array($d) || !isset($d['layers']) || !is_array($d['layers'])) throw new MmError(400, 'Marco no válido.');
+    if (count($d['layers']) > MM_MAX_LAYERS) throw new MmError(400, 'El marco tiene demasiadas piezas.');
+    $ratio = isset($d['ratio']) && is_string($d['ratio']) && preg_match('/^(4:5|3:4|1:1|9:16|custom)$/', $d['ratio']) ? $d['ratio'] : '4:5';
+    $h = isset($d['H']) && is_numeric($d['H']) ? max(400, min(3000, (int) $d['H'])) : 1350;
+    $layers = [];
+    foreach ($d['layers'] as $l) {
+        if (!is_array($l) || !isset($l['type']) || !in_array($l['type'], MM_LAYER_TYPES, true)) continue;
+        $l = mm_clean_value($l, 5);
+        if ($l['type'] === 'image') {
+            $slot = isset($l['props']['asset']) ? $l['props']['asset'] : null;
+            unset($l['props']['asset']);
+            if (is_string($slot) && isset($images[$slot])) $l['props']['url'] = $images[$slot];
+            elseif (!isset($l['props']['url']) || !is_string($l['props']['url']) || !preg_match('#^uploads/[0-9a-f]{20}\.png$#', $l['props']['url'])) continue;
+        } elseif (isset($l['props']) && is_array($l['props'])) {
+            unset($l['props']['asset']);
+        }
+        $layers[] = $l;
+    }
+    if (!$layers) throw new MmError(400, 'El marco está vacío.');
+    return ['v' => 2, 'W' => 1080, 'H' => $h, 'ratio' => $ratio, 'layers' => $layers];
+}
+
 /**
  * Validates an uploaded image (must be a real PNG) and stores it under a random name.
  * Re-encodes with GD when available so only clean pixel data is kept.
@@ -250,7 +307,7 @@ function mm_save_frame($dataDir, $uploadDir, $post, $files)
     }
     $token = bin2hex(random_bytes(16));
 
-    $kind = isset($post['kind']) && $post['kind'] === 'png' ? 'png' : 'design';
+    $kind = isset($post['kind']) && in_array($post['kind'], ['png', 'layout'], true) ? $post['kind'] : 'design';
     $name = trim(mm_str(isset($post['name']) ? $post['name'] : '', '', 40));
     if ($name === '') $name = $kind === 'png' ? 'Marco PNG' : 'Marco';
 
@@ -266,6 +323,17 @@ function mm_save_frame($dataDir, $uploadDir, $post, $files)
     if ($kind === 'png') {
         if (empty($files['png'])) throw new MmError(400, 'Falta el PNG del marco.');
         $frame['files']['png'] = mm_store_png($files['png'], $uploadDir);
+    } elseif ($kind === 'layout') {
+        try {
+            $images = [];
+            foreach (MM_IMAGE_SLOTS as $slot) {
+                if (!empty($files[$slot])) $images[$slot] = $frame['files'][$slot] = mm_store_png($files[$slot], $uploadDir);
+            }
+            $frame['def'] = mm_clean_layout(isset($post['def']) ? $post['def'] : '', $images);
+        } catch (Exception $e) {
+            mm_delete_files($frame, $uploadDir);
+            throw $e;
+        }
     } else {
         $def = json_decode(isset($post['def']) ? (string) $post['def'] : '', true);
         $frame['def'] = mm_clean_def($def);
