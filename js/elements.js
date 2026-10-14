@@ -329,7 +329,7 @@
     ] }
   ];
 
-  const LOGOS = { mixMatch: { src: 'assets/mix-match-logo.png', w: 360, h: 340 }, artBlack: { src: 'assets/art-padel-black.png', w: 307, h: 219 }, artWhite: { src: 'assets/art-padel-white.png', w: 307, h: 219 } };
+  const LOGOS = { mixMatch: { src: 'assets/mix-match-logo.png', w: 360, h: 340 }, artBlack: { src: 'assets/art-padel-black.png', w: 1600, h: 1149 }, artWhite: { src: 'assets/art-padel-white.png', w: 1600, h: 1149 } };
 
   window.Elements = { TYPES, THEMES, THEME_LABELS, SWATCHES, PLACE_PRESETS, LIBRARY, LOGOS, sanitizeProps, sanitizeLayer, make, uid, esc };
 })();
