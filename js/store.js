@@ -6,6 +6,7 @@ import { loadImage } from './scene.js';
 
 const API = 'api/frames.php';
 const KEY_STORAGE = 'mm_admin_key';
+const TOKENS_STORAGE = 'mm_owner_tokens';
 
 // ------------------------------------------------------------------ admin key
 
@@ -15,6 +16,17 @@ export function getAdminKey() {
 export function setAdminKey(key) {
   try { key ? localStorage.setItem(KEY_STORAGE, key) : localStorage.removeItem(KEY_STORAGE); } catch { /* private mode */ }
 }
+
+// ------------------------------------------------------------------ owner tokens
+// Publishing returns a secret token; only the device holding it can delete that frame.
+
+function readTokens() {
+  try { return JSON.parse(localStorage.getItem(TOKENS_STORAGE) || '{}') || {}; } catch { return {}; }
+}
+function writeTokens(t) {
+  try { localStorage.setItem(TOKENS_STORAGE, JSON.stringify(t)); } catch { /* private mode */ }
+}
+export const ownerToken = (id) => readTokens()[id] || '';
 
 // ------------------------------------------------------------------ server
 
@@ -44,26 +56,33 @@ export async function checkAdminKey(key) {
   await post(f);
 }
 
-/** rec = { name, kind, def?, blobs: { badge?, corner?, png? } } */
-export async function publishFrame(key, rec) {
+/** rec = { name, kind, def?, blobs: { badge?, corner?, png? } }. Anyone can publish. */
+export async function publishFrame(rec) {
   const f = new FormData();
   f.append('action', 'save');
-  f.append('key', key);
   f.append('name', rec.name);
   f.append('kind', rec.kind);
   if (rec.kind === 'design') f.append('def', JSON.stringify(rec.def));
   for (const [slot, blob] of Object.entries(rec.blobs || {})) {
     if (blob) f.append(slot, blob, `${slot}.png`);
   }
-  return (await post(f)).frame;
+  const { frame, token } = await post(f);
+  writeTokens({ ...readTokens(), [frame.id]: token });
+  return frame;
 }
 
-export async function deleteServerFrame(key, id) {
+/** Deletes with this device's owner token, or the admin key if one is stored. */
+export async function deleteServerFrame(id) {
   const f = new FormData();
   f.append('action', 'delete');
-  f.append('key', key);
   f.append('id', id);
+  const token = ownerToken(id);
+  if (token) f.append('token', token);
+  else if (getAdminKey()) f.append('key', getAdminKey());
   await post(f);
+  const t = readTokens();
+  delete t[id];
+  writeTokens(t);
 }
 
 // ------------------------------------------------------------------ local (IndexedDB)

@@ -1,8 +1,8 @@
 <?php
-// GET  -> { frames: [...] }                         public list of shared frames
-// POST action=check  key                           -> { ok }
-// POST action=save   key name kind def badge corner png -> { ok, frame }
-// POST action=delete key id                         -> { ok }
+// GET  -> { frames: [...] }                              public list of shared frames
+// POST action=save   name kind def badge corner png     -> { ok, frame, token }   (anyone, rate limited)
+// POST action=delete id token | key                     -> { ok }   (owner token, or optional admin key)
+// POST action=check  key                                -> { ok }   (verifies the optional admin key)
 require __DIR__ . '/lib.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -23,7 +23,7 @@ try {
     $method = isset($_SERVER['REQUEST_METHOD']) ? $_SERVER['REQUEST_METHOD'] : 'GET';
 
     if ($method === 'GET') {
-        mm_respond(200, ['frames' => mm_read_frames($dataDir)]);
+        mm_respond(200, ['frames' => mm_public_frames(mm_read_frames($dataDir))]);
     }
     if ($method !== 'POST') {
         mm_respond(405, ['ok' => false, 'error' => 'Método no permitido.']);
@@ -34,16 +34,20 @@ try {
         throw new MmError(413, 'El archivo es muy pesado para el servidor.');
     }
 
-    if (!mm_check_key($dataDir, isset($_POST['key']) ? $_POST['key'] : '')) {
+    $action = isset($_POST['action']) ? $_POST['action'] : '';
+    $key = isset($_POST['key']) ? $_POST['key'] : '';
+    $isAdmin = mm_check_key($dataDir, $key);
+    if ($key !== '' && !$isAdmin) {
         usleep(800000); // slow down guessing
         throw new MmError(403, 'Clave de admin incorrecta.');
     }
 
-    $action = isset($_POST['action']) ? $_POST['action'] : '';
     if ($action === 'check') {
+        if (!$isAdmin) throw new MmError(403, 'Clave de admin incorrecta.');
         mm_respond(200, ['ok' => true]);
     }
     if ($action === 'save') {
+        if (!$isAdmin) mm_rate_limit($dataDir, isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '');
         $files = [];
         foreach (['badge', 'corner', 'png'] as $slot) {
             if (!isset($_FILES[$slot])) continue;
@@ -56,11 +60,13 @@ try {
             }
             $files[$slot] = $f['tmp_name'];
         }
-        $frame = mm_save_frame($dataDir, $uploadDir, $_POST, $files);
-        mm_respond(200, ['ok' => true, 'frame' => $frame]);
+        list($frame, $token) = mm_save_frame($dataDir, $uploadDir, $_POST, $files);
+        unset($frame['owner']);
+        mm_respond(200, ['ok' => true, 'frame' => $frame, 'token' => $token]);
     }
     if ($action === 'delete') {
-        mm_delete_frame($dataDir, $uploadDir, isset($_POST['id']) ? $_POST['id'] : '');
+        $token = isset($_POST['token']) ? $_POST['token'] : '';
+        mm_delete_frame($dataDir, $uploadDir, isset($_POST['id']) ? $_POST['id'] : '', $token, $isAdmin);
         mm_respond(200, ['ok' => true]);
     }
     throw new MmError(400, 'Acción no válida.');

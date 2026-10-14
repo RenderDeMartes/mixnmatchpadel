@@ -14,12 +14,13 @@ Plain static HTML/CSS/JS, no build step.
 
 - **Diseñar**: start from a preset and change texts, colors, metal, logos (text or uploaded image) and the place badge.
 - **Subir PNG**: upload a PNG with a transparent center; the transparent area is detected automatically and the output keeps the PNG's size.
-- **Usar este marco** saves it on the device (IndexedDB). **Publicar para todos** saves it on the server so everyone sees it under "Del torneo".
+- **Usar este marco** saves it on the device (IndexedDB). **Publicar para todos** saves it on the server so everyone sees it under "Del torneo". No key needed; only the publishing device (owner token in localStorage) can delete it.
 
 ## Shared frames API (`api/frames.php`, PHP 7.4+)
 
 - Data lives outside the web root in `/home/reeldemi/mixnmatch-data/` (`frames.json`, `admin-key.txt`); images go to `uploads/`.
-- Publishing/deleting requires the admin key: the first non-comment line of `admin-key.txt` (min 8 chars). Edit it in cPanel → File Manager.
+- Anyone can publish: 10 publishes/hour per IP, 8 MB per image, 200 MB total, 100 frames max.
+- Optional moderation: put a key (8+ chars) on the first non-comment line of `admin-key.txt`, then open the app with `?admin` to delete any frame.
 - `MM_DATA_DIR` / `MM_UPLOAD_DIR` env vars override the paths.
 
 ## Run locally

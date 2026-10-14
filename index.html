@@ -205,7 +205,7 @@
         <div class="creator__actions">
           <button id="c-use" class="btn btn--primary" type="button">Usar este marco</button>
           <button id="c-publish" class="btn btn--ghost" type="button">Publicar para todos</button>
-          <p class="hint center">"Usar" lo guarda solo en este teléfono. "Publicar" lo comparte con todos (requiere clave de admin).</p>
+          <p class="hint center">"Usar" lo guarda solo en este teléfono. "Publicar" lo comparte con todos; solo este teléfono lo podrá borrar.</p>
         </div>
       </div>
     </div>
@@ -214,7 +214,7 @@
   <dialog id="admin-dialog" class="dialog">
     <form method="dialog" id="admin-form">
       <h2>Clave de admin</h2>
-      <p class="hint">Necesaria para publicar o borrar marcos compartidos.</p>
+      <p class="hint">Modo moderación: permite borrar cualquier marco compartido.</p>
       <input id="admin-key" type="password" autocomplete="current-password" required minlength="8" placeholder="Clave">
       <label class="switch"><input id="admin-remember" type="checkbox" checked><span>Recordar en este dispositivo</span></label>
       <p id="admin-error" class="error" hidden></p>

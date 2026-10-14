@@ -1,7 +1,11 @@
 <?php
 // Shared-frame storage for Mix & Match Pádel. PHP 7.4 compatible.
 //
-// Data (outside the web root):  MM_DATA_DIR/frames.json, MM_DATA_DIR/admin-key.txt
+// Anyone can publish. Each frame stores a hash of a secret "owner token" that is returned
+// only to the device that published it, so only that device can delete it. An optional
+// admin key (first non-# line of admin-key.txt) can delete any frame for moderation.
+//
+// Data (outside the web root):  MM_DATA_DIR/frames.json, rate.json, admin-key.txt
 // Images (public):              <docroot>/uploads/<random>.png
 
 class MmError extends Exception
@@ -14,8 +18,11 @@ class MmError extends Exception
     }
 }
 
-const MM_MAX_FRAMES = 60;
-const MM_MAX_BYTES = 15 * 1024 * 1024;
+const MM_MAX_FRAMES = 100;
+const MM_MAX_BYTES = 8 * 1024 * 1024;          // per image
+const MM_MAX_TOTAL = 200 * 1024 * 1024;        // all uploaded images together (account quota is 600 MB)
+const MM_RATE_MAX = 10;                        // publishes per IP...
+const MM_RATE_WINDOW = 3600;                   // ...per this many seconds
 const MM_MAX_SIDE = 6000;
 const MM_LOGO_TYPES = ['text', 'image', 'none'];
 const MM_METALS = ['gold', 'silver', 'bronze', 'steel', 'red'];
@@ -44,13 +51,62 @@ function mm_admin_key($dataDir)
     return '';
 }
 
+/** True only when an admin key (8+ chars) is configured and matches. */
 function mm_check_key($dataDir, $given)
 {
     $key = mm_admin_key($dataDir);
-    if (strlen($key) < 8) {
-        throw new MmError(503, 'Falta configurar la clave de admin en el servidor (admin-key.txt).');
+    return strlen($key) >= 8 && is_string($given) && $given !== '' && hash_equals($key, $given);
+}
+
+/** Frames as served to everyone: without the owner hash. */
+function mm_public_frames($frames)
+{
+    $out = [];
+    foreach ($frames as $f) {
+        unset($f['owner']);
+        $out[] = $f;
     }
-    return is_string($given) && $given !== '' && hash_equals($key, $given);
+    return $out;
+}
+
+/** Allows MM_RATE_MAX publishes per IP per MM_RATE_WINDOW seconds. */
+function mm_rate_limit($dataDir, $ip, $now = null)
+{
+    $now = $now === null ? time() : $now;
+    if (!is_dir($dataDir) && !mkdir($dataDir, 0700, true)) throw new MmError(500, 'No se pudo crear la carpeta de datos.');
+    $fh = fopen($dataDir . '/rate.json', 'c+');
+    if (!$fh || !flock($fh, LOCK_EX)) throw new MmError(500, 'No se pudo verificar el límite.');
+    try {
+        $data = json_decode((string) stream_get_contents($fh), true);
+        if (!is_array($data)) $data = [];
+        $fresh = [];
+        foreach ($data as $k => $times) {
+            $times = array_values(array_filter((array) $times, function ($t) use ($now) {
+                return is_int($t) && $t > $now - MM_RATE_WINDOW;
+            }));
+            if ($times) $fresh[$k] = $times;
+        }
+        $k = hash('sha256', (string) $ip);
+        $mine = isset($fresh[$k]) ? $fresh[$k] : [];
+        if (count($mine) >= MM_RATE_MAX) {
+            throw new MmError(429, 'Publicaste muchos marcos seguidos. Intenta de nuevo en un rato.');
+        }
+        $mine[] = $now;
+        $fresh[$k] = $mine;
+        ftruncate($fh, 0);
+        rewind($fh);
+        fwrite($fh, json_encode($fresh));
+    } finally {
+        flock($fh, LOCK_UN);
+        fclose($fh);
+    }
+}
+
+function mm_uploads_size($uploadDir)
+{
+    $total = 0;
+    foreach ((array) glob($uploadDir . '/*.png') as $f) $total += (int) @filesize($f);
+    return $total;
 }
 
 function mm_read_frames($dataDir)
@@ -147,7 +203,7 @@ function mm_store_png($tmpPath, $uploadDir)
 {
     if (!is_file($tmpPath)) throw new MmError(400, 'Archivo no recibido.');
     $size = filesize($tmpPath);
-    if ($size <= 0 || $size > MM_MAX_BYTES) throw new MmError(413, 'La imagen es muy pesada (máximo 15 MB).');
+    if ($size <= 0 || $size > MM_MAX_BYTES) throw new MmError(413, 'La imagen es muy pesada (máximo 8 MB).');
     $info = @getimagesize($tmpPath);
     if (!$info || $info[2] !== IMAGETYPE_PNG) throw new MmError(415, 'La imagen tiene que ser PNG.');
     if ($info[0] < 16 || $info[1] < 16 || $info[0] > MM_MAX_SIDE || $info[1] > MM_MAX_SIDE) {
@@ -183,9 +239,17 @@ function mm_delete_files($frame, $uploadDir)
 
 /**
  * Creates a frame. $files maps slot (badge|corner|png) => temp path of an already-validated upload.
+ * Returns [frame, ownerToken]; only the hash of the token is stored.
  */
 function mm_save_frame($dataDir, $uploadDir, $post, $files)
 {
+    $incoming = 0;
+    foreach ($files as $path) $incoming += (int) @filesize($path);
+    if (mm_uploads_size($uploadDir) + $incoming > MM_MAX_TOTAL) {
+        throw new MmError(507, 'Ya no hay espacio para más marcos. Borra algunos primero.');
+    }
+    $token = bin2hex(random_bytes(16));
+
     $kind = isset($post['kind']) && $post['kind'] === 'png' ? 'png' : 'design';
     $name = trim(mm_str(isset($post['name']) ? $post['name'] : '', '', 40));
     if ($name === '') $name = $kind === 'png' ? 'Marco PNG' : 'Marco';
@@ -196,6 +260,7 @@ function mm_save_frame($dataDir, $uploadDir, $post, $files)
         'kind' => $kind,
         'files' => [],
         'created' => time(),
+        'owner' => hash('sha256', $token),
     ];
 
     if ($kind === 'png') {
@@ -225,18 +290,24 @@ function mm_save_frame($dataDir, $uploadDir, $post, $files)
         mm_delete_files($frame, $uploadDir);
         throw $e;
     }
-    return $frame;
+    return [$frame, $token];
 }
 
-function mm_delete_frame($dataDir, $uploadDir, $id)
+/** Deletes a frame if $token is its owner token, or $isAdmin. */
+function mm_delete_frame($dataDir, $uploadDir, $id, $token, $isAdmin)
 {
     if (!is_string($id) || !preg_match('/^[0-9a-f]{12}$/', $id)) throw new MmError(400, 'Id no válido.');
     $removed = null;
-    mm_update_frames($dataDir, function ($frames) use ($id, &$removed) {
+    mm_update_frames($dataDir, function ($frames) use ($id, $token, $isAdmin, &$removed) {
         $keep = [];
         foreach ($frames as $f) {
-            if (isset($f['id']) && $f['id'] === $id) $removed = $f;
-            else $keep[] = $f;
+            if (isset($f['id']) && $f['id'] === $id) {
+                $owns = is_string($token) && $token !== '' && isset($f['owner']) && hash_equals($f['owner'], hash('sha256', $token));
+                if (!$owns && !$isAdmin) throw new MmError(403, 'Solo quien publicó este marco lo puede borrar.');
+                $removed = $f;
+            } else {
+                $keep[] = $f;
+            }
         }
         return $keep;
     });

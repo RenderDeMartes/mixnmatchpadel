@@ -2,7 +2,7 @@ import { ASPECTS, PRESETS, frameSize, renderFrame, loadFonts } from './frames.js
 import { makePhoto, zoomBounds, drawScene, cachedFrame, clearFrameCache, loadImage } from './scene.js';
 import {
   fetchServerFrames, listLocal, saveLocal, deleteLocal, deleteServerFrame,
-  hydrate, getAdminKey, setAdminKey, checkAdminKey,
+  hydrate, getAdminKey, setAdminKey, checkAdminKey, ownerToken,
 } from './store.js';
 import { initCreator } from './creator.js';
 
@@ -359,7 +359,7 @@ function frameCard(frame) {
   card.addEventListener('click', () => { selectFrame(frame); show('edit'); });
   wrap.appendChild(card);
 
-  const canDelete = frame.source === 'local' || (frame.source === 'server' && getAdminKey());
+  const canDelete = frame.source === 'local' || (frame.source === 'server' && (ownerToken(frame.rawId) || getAdminKey()));
   if (canDelete) {
     const del = document.createElement('button');
     del.type = 'button';
@@ -377,9 +377,7 @@ async function removeFrame(frame) {
   if (!window.confirm(`¿Borrar "${frame.name}" ${where}?`)) return;
   try {
     if (frame.source === 'server') {
-      const key = await askAdminKey();
-      if (!key) return;
-      await deleteServerFrame(key, frame.rawId);
+      await deleteServerFrame(frame.rawId);
       lists.server = lists.server.filter((f) => f !== frame);
     } else {
       await deleteLocal(frame.rawId);
@@ -464,15 +462,20 @@ function askAdminKey({ force = false } = {}) {
 
 function handleApiError(err) {
   console.error(err);
-  if (err.status === 403) setAdminKey('');
   toast(err.message || 'Algo falló. Intenta de nuevo.');
+}
+
+// Optional moderation: open the app with ?admin to enter the admin key (lets you delete any shared frame).
+if (new URLSearchParams(location.search).has('admin')) {
+  askAdminKey({ force: true }).then((key) => {
+    if (key) { toast('Modo admin activo: puedes borrar cualquier marco compartido.'); renderSections(); }
+  });
 }
 
 // ------------------------------------------------------------------ creator
 
 const creator = initCreator({
   getPhoto: () => (state.photo ? { photo: state.photo, blur: state.blur } : null),
-  askAdminKey,
   handleApiError,
   toast,
   async onSaved(rec, source) {

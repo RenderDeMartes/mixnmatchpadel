@@ -263,13 +263,11 @@ export function initCreator(app) {
   $('#c-publish').addEventListener('click', async () => {
     const rec = buildRecord();
     if (!rec) return;
-    const key = await app.askAdminKey();
-    if (!key) return;
     const btn = $('#c-publish');
     btn.disabled = true;
     btn.textContent = 'Publicando…';
     try {
-      const saved = await publishFrame(key, rec);
+      const saved = await publishFrame(rec);
       await app.onSaved(saved, 'server');
       app.toast('✅ Publicado. Ya aparece para todos en "Del torneo".');
     } catch (err) {
