@@ -1,41 +1,47 @@
-import { ASPECTS, FRAMES, layout, renderFrame, loadFonts } from './frames.js';
+import { ASPECTS, PRESETS, frameSize, renderFrame, loadFonts } from './frames.js';
+import { makePhoto, zoomBounds, drawScene, cachedFrame, clearFrameCache, loadImage } from './scene.js';
+import {
+  fetchServerFrames, listLocal, saveLocal, deleteLocal, deleteServerFrame,
+  hydrate, getAdminKey, setAdminKey, checkAdminKey,
+} from './store.js';
+import { initCreator } from './creator.js';
 
-const MAX_SOURCE = 4096;   // downscale huge photos so mobile canvases don't run out of memory
-const MAX_ZOOM = 6;
 const JPEG_QUALITY = 0.92;
 
 const $ = (sel) => document.querySelector(sel);
-const steps = { upload: $('#step-upload'), frames: $('#step-frames'), edit: $('#step-edit') };
+const steps = {
+  home: $('#step-home'), frames: $('#step-frames'), edit: $('#step-edit'), creator: $('#step-creator'),
+};
 const preview = $('#preview');
 const pctx = preview.getContext('2d');
 const stage = $('#stage');
 const zoomInput = $('#zoom');
 
 const state = {
-  photo: null,     // canvas holding the (possibly downscaled) photo
-  blur: null,      // tiny copy used as blurred backdrop
-  frame: FRAMES[0],
+  photo: null,       // canvas holding the (possibly downscaled) photo
+  blur: null,        // tiny copy used as blurred backdrop
+  frame: PRESETS[0],
   aspect: 'vertical',
-  z: 1,            // zoom relative to "cover the window"
-  ox: 0, oy: 0,    // photo center offset from window center, in units of canvas width
+  z: 1,              // zoom relative to "cover the window"
+  ox: 0, oy: 0,      // photo center offset from window center, in units of canvas width
+  pendingFrame: null, // frame chosen in the creator before a photo exists
 };
 
-const frameCache = new Map();
-function cachedFrame(frame, W, H) {
-  const key = `${frame.id}|${W}x${H}`;
-  if (!frameCache.has(key)) {
-    if (frameCache.size > 24) frameCache.clear();
-    frameCache.set(key, renderFrame(frame, W, H));
-  }
-  return frameCache.get(key);
-}
+const lists = { server: [], local: [] };
+let current = 'home';
+let previous = 'home';
+
+const dims = () => frameSize(state.frame, state.aspect);
 
 // ------------------------------------------------------------------ navigation
 
 function show(name) {
+  if (name === 'back') name = previous === 'creator' ? 'home' : previous;
+  if (name !== current) { previous = current; current = name; }
   for (const [k, el] of Object.entries(steps)) el.hidden = k !== name;
-  if (name === 'frames') renderGrid();
-  if (name === 'edit') { renderStrip(); fitPreview(); }
+  if (name === 'frames') renderSections();
+  if (name === 'edit') { renderStrip(); syncAspectUi(); fitPreview(); }
+  if (name === 'creator') creator.open();
   window.scrollTo(0, 0);
 }
 document.querySelectorAll('[data-go]').forEach((b) => b.addEventListener('click', () => show(b.dataset.go)));
@@ -46,89 +52,40 @@ $('#file').addEventListener('change', async (e) => {
   const file = e.target.files?.[0];
   e.target.value = '';
   if (!file) return;
+  const url = URL.createObjectURL(file);
   try {
-    await loadPhoto(file);
+    Object.assign(state, makePhoto(await loadImage(url)));
   } catch (err) {
     console.error(err);
     toast('No pude abrir esa imagen. Prueba con otra (JPG o PNG).');
     return;
-  }
-  const fromEditor = !steps.edit.hidden;
-  resetTransform();
-  if (fromEditor) { renderStrip(); draw(); } else show('frames');
-});
-
-async function loadPhoto(file) {
-  const url = URL.createObjectURL(file);
-  try {
-    const img = await new Promise((resolve, reject) => {
-      const i = new Image();
-      i.onload = () => resolve(i);
-      i.onerror = () => reject(new Error('image load failed'));
-      i.src = url;
-    });
-    const k = Math.min(1, MAX_SOURCE / Math.max(img.naturalWidth, img.naturalHeight));
-    const c = document.createElement('canvas');
-    c.width = Math.round(img.naturalWidth * k);
-    c.height = Math.round(img.naturalHeight * k);
-    const cx = c.getContext('2d');
-    cx.imageSmoothingQuality = 'high';
-    cx.drawImage(img, 0, 0, c.width, c.height);
-    state.photo = c;
-
-    // Downscale-then-upscale gives a cheap blur that works in every browser.
-    const b = document.createElement('canvas');
-    const bk = 24 / Math.max(c.width, c.height);
-    b.width = Math.max(1, Math.round(c.width * bk));
-    b.height = Math.max(1, Math.round(c.height * bk));
-    b.getContext('2d').drawImage(c, 0, 0, b.width, b.height);
-    state.blur = b;
-
-    const r = c.width / c.height;
-    state.aspect = r > 1.15 ? 'horizontal' : r < 0.87 ? 'vertical' : 'square';
-    syncAspectButtons();
   } finally {
     URL.revokeObjectURL(url);
   }
-}
+  const r = state.photo.width / state.photo.height;
+  state.aspect = r > 1.15 ? 'horizontal' : r < 0.87 ? 'vertical' : 'square';
+  syncAspectButtons();
+  resetTransform();
 
-// ------------------------------------------------------------------ scene
+  if (state.pendingFrame) {
+    const f = state.pendingFrame;
+    state.pendingFrame = null;
+    $('#pending-note').hidden = true;
+    selectFrame(f);
+    show('edit');
+  } else if (current === 'edit') {
+    renderStrip(); fitPreview();
+  } else {
+    show('frames');
+  }
+});
 
-function zoomBounds(W, H, frame = state.frame, photo = state.photo) {
-  const { win } = layout(W, H, frame);
-  const { width: iw, height: ih } = photo;
-  const cover = Math.max(win.w / iw, win.h / ih);
-  const contain = Math.min(win.w / iw, win.h / ih);
-  return { win, cover, min: contain / cover, max: MAX_ZOOM };
-}
-
-function drawScene(ctx, W, H, frameCanvas, s = state) {
-  const { win, cover } = zoomBounds(W, H, s.frame, s.photo);
-  const photo = s.photo;
-  const scale = cover * s.z;
-  const dw = photo.width * scale;
-  const dh = photo.height * scale;
-  const cx = win.cx + s.ox * W;
-  const cy = win.cy + s.oy * W;
-
-  ctx.clearRect(0, 0, W, H);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
-
-  // Blurred backdrop so zooming out never leaves empty space.
-  const b = s.blur;
-  const bs = Math.max(W / b.width, H / b.height) * 1.1;
-  ctx.drawImage(b, (W - b.width * bs) / 2, (H - b.height * bs) / 2, b.width * bs, b.height * bs);
-  ctx.fillStyle = 'rgba(0,0,0,.35)';
-  ctx.fillRect(0, 0, W, H);
-
-  ctx.drawImage(photo, cx - dw / 2, cy - dh / 2, dw, dh);
-  ctx.drawImage(frameCanvas, 0, 0, W, H);
-}
+// ------------------------------------------------------------------ transform
 
 function clampOffsets() {
-  const { w: W, h: H } = ASPECTS[state.aspect];
-  const { win, cover, min, max } = zoomBounds(W, H);
+  if (!state.photo) return;
+  const { w: W, h: H } = dims();
+  const { win, cover, min, max } = zoomBounds(W, H, state.frame, state.photo);
   state.z = Math.min(max, Math.max(min, state.z));
   const dw = state.photo.width * cover * state.z;
   const dh = state.photo.height * cover * state.z;
@@ -151,12 +108,10 @@ function resetTransform() {
 let cssW = 0, cssH = 0;
 
 function fitPreview() {
-  if (steps.edit.hidden || !state.photo) return;
-  const { w, h } = ASPECTS[state.aspect];
+  if (current !== 'edit' || !state.photo) return;
+  const { w, h } = dims();
   const rect = stage.getBoundingClientRect();
-  const availW = rect.width - 32;
-  const availH = rect.height - 42;
-  const k = Math.min(availW / w, availH / h);
+  const k = Math.min((rect.width - 32) / w, (rect.height - 42) / h);
   cssW = Math.max(50, Math.floor(w * k));
   cssH = Math.max(50, Math.floor(h * k));
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -174,7 +129,7 @@ function draw() {
     raf = 0;
     if (!state.photo || !preview.width) return;
     const W = preview.width, H = preview.height;
-    drawScene(pctx, W, H, cachedFrame(state.frame, W, H));
+    drawScene(pctx, W, H, cachedFrame(state.frame, W, H), state);
   });
 }
 
@@ -192,8 +147,8 @@ function toCanvas(e) {
 
 function zoomAt(px, py, factor) {
   // px/py in CSS px of the preview. Keep the point under the finger fixed.
-  const { w, h } = ASPECTS[state.aspect];
-  const { win, min, max } = zoomBounds(w, h);
+  const { w, h } = dims();
+  const { win, min, max } = zoomBounds(w, h, state.frame, state.photo);
   const newZ = Math.min(max, Math.max(min, state.z * factor));
   const f = newZ / state.z;
   const k = w / cssW;
@@ -213,22 +168,21 @@ preview.addEventListener('pointerdown', (e) => {
 });
 
 preview.addEventListener('pointermove', (e) => {
-  if (!pointers.has(e.pointerId)) return;
+  if (!pointers.has(e.pointerId) || !gesture) return;
   pointers.set(e.pointerId, toCanvas(e));
   const pts = [...pointers.values()];
-  if (!gesture) return;
-
+  const k = 1 / cssW; // CSS px -> units of canvas width
   if (pts.length === 1) {
     const p = pts[0];
-    state.ox += (p.x - gesture.x) / cssW;
-    state.oy += (p.y - gesture.y) / cssW;
+    state.ox += (p.x - gesture.x) * k;
+    state.oy += (p.y - gesture.y) * k;
     gesture.x = p.x; gesture.y = p.y;
   } else {
     const [a, b] = pts;
     const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     const dist = Math.hypot(a.x - b.x, a.y - b.y) || 1;
-    state.ox += (mid.x - gesture.x) / cssW;
-    state.oy += (mid.y - gesture.y) / cssW;
+    state.ox += (mid.x - gesture.x) * k;
+    state.oy += (mid.y - gesture.y) * k;
     zoomAt(mid.x, mid.y, dist / gesture.dist);
     gesture = { x: mid.x, y: mid.y, dist };
   }
@@ -267,8 +221,8 @@ preview.addEventListener('wheel', (e) => {
 preview.addEventListener('dblclick', () => { resetTransform(); draw(); });
 
 zoomInput.addEventListener('input', () => {
-  const { w, h } = ASPECTS[state.aspect];
-  const { min, max } = zoomBounds(w, h);
+  const { w, h } = dims();
+  const { min, max } = zoomBounds(w, h, state.frame, state.photo);
   const target = min * Math.pow(max / min, zoomInput.value / 1000);
   zoomAt(cssW / 2, cssH / 2, target / state.z);
   clampOffsets();
@@ -278,8 +232,8 @@ zoomInput.addEventListener('input', () => {
 
 function syncZoomSlider() {
   if (!state.photo) return;
-  const { w, h } = ASPECTS[state.aspect];
-  const { min, max } = zoomBounds(w, h);
+  const { w, h } = dims();
+  const { min, max } = zoomBounds(w, h, state.frame, state.photo);
   zoomInput.value = Math.round((Math.log(state.z / min) / Math.log(max / min)) * 1000);
 }
 
@@ -296,7 +250,7 @@ function hideHint() {
 
 const ASPECT_ICONS = { vertical: [12, 15], square: [14, 14], horizontal: [17, 13] };
 
-document.querySelectorAll('.aspects').forEach((group) => {
+function buildAspectButtons(group, onPick, isChecked) {
   for (const [key, a] of Object.entries(ASPECTS)) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -304,11 +258,19 @@ document.querySelectorAll('.aspects').forEach((group) => {
     b.dataset.aspect = key;
     b.setAttribute('role', 'radio');
     const [iw, ih] = ASPECT_ICONS[key];
-    b.innerHTML = `<i style="width:${iw}px;height:${ih}px"></i>${a.label}`;
-    b.addEventListener('click', () => setAspect(key));
+    b.innerHTML = `<i style="width:${iw}px;height:${ih}px"></i>`;
+    b.append(a.label);
+    b.addEventListener('click', () => onPick(key));
     group.appendChild(b);
   }
-});
+  const sync = () => group.querySelectorAll('.aspect').forEach((b) => b.setAttribute('aria-checked', String(isChecked(b.dataset.aspect))));
+  sync();
+  return sync;
+}
+
+const aspectSyncers = [...document.querySelectorAll('#step-frames .aspects, #step-edit .aspects')]
+  .map((g) => buildAspectButtons(g, setAspect, (k) => k === state.aspect));
+const syncAspectButtons = () => aspectSyncers.forEach((f) => f());
 
 function setAspect(key) {
   if (state.aspect === key) return;
@@ -317,19 +279,35 @@ function setAspect(key) {
   state.ox = 0; state.oy = 0;
   clampOffsets();
   syncZoomSlider();
-  if (!steps.frames.hidden) renderGrid();
-  if (!steps.edit.hidden) { renderStrip(); fitPreview(); }
+  if (current === 'frames') renderSections();
+  if (current === 'edit') { renderStrip(); fitPreview(); }
 }
 
-function syncAspectButtons() {
-  document.querySelectorAll('.aspect').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.aspect === state.aspect)));
+function syncAspectUi() {
+  const locked = state.frame.kind === 'png';
+  $('#step-edit .aspects').hidden = locked;
+  $('.aspect-locked').hidden = !locked;
 }
-syncAspectButtons();
 
-// ------------------------------------------------------------------ frame pickers
+// ------------------------------------------------------------------ frame lists
+
+function allFrames() {
+  return [...lists.server, ...lists.local, ...PRESETS];
+}
+
+async function loadFrameLists() {
+  const [server, local] = await Promise.all([
+    fetchServerFrames().catch((err) => { console.warn('server frames unavailable', err); return []; }),
+    listLocal(),
+  ]);
+  lists.server = (await Promise.all(server.map((r) => hydrate(r, 'server').catch(() => null)))).filter(Boolean);
+  lists.local = (await Promise.all(local.map((r) => hydrate(r, 'local').catch(() => null)))).filter(Boolean);
+  if (current === 'frames') renderSections();
+  if (current === 'edit') renderStrip();
+}
 
 function thumb(frame, width) {
-  const { w, h } = ASPECTS[state.aspect];
+  const { w, h } = frameSize(frame, state.aspect);
   const W = width, H = Math.round(width * h / w);
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
@@ -340,29 +318,90 @@ function thumb(frame, width) {
   return c;
 }
 
-function renderGrid() {
-  const grid = $('#frame-grid');
-  grid.textContent = '';
-  for (const frame of FRAMES) {
-    const card = document.createElement('button');
-    card.type = 'button';
-    card.className = 'frame-card';
-    card.appendChild(thumb(frame, 360));
-    card.append(frame.name);
-    card.addEventListener('click', () => { selectFrame(frame); show('edit'); });
-    grid.appendChild(card);
+function renderSections() {
+  const root = $('#frame-sections');
+  root.textContent = '';
+  const groups = [
+    ['Del torneo', lists.server],
+    ['Mis marcos', lists.local],
+    ['Clásicos', PRESETS],
+  ];
+
+  const createCard = document.createElement('button');
+  createCard.type = 'button';
+  createCard.className = 'frame-card frame-card--create';
+  createCard.innerHTML = '<span class="plus" aria-hidden="true">＋</span>';
+  createCard.append('Crear marco');
+  createCard.addEventListener('click', () => show('creator'));
+
+  let first = true;
+  for (const [title, frames] of groups) {
+    if (!frames.length) continue;
+    const h = document.createElement('h2');
+    h.className = 'section-title';
+    h.textContent = title;
+    const grid = document.createElement('div');
+    grid.className = 'frame-grid';
+    if (first) { grid.appendChild(createCard); first = false; }
+    for (const frame of frames) grid.appendChild(frameCard(frame));
+    root.append(h, grid);
+  }
+}
+
+function frameCard(frame) {
+  const wrap = document.createElement('div');
+  wrap.className = 'frame-card-wrap';
+  const card = document.createElement('button');
+  card.type = 'button';
+  card.className = 'frame-card';
+  card.appendChild(thumb(frame, 360));
+  card.append(frame.name);
+  card.addEventListener('click', () => { selectFrame(frame); show('edit'); });
+  wrap.appendChild(card);
+
+  const canDelete = frame.source === 'local' || (frame.source === 'server' && getAdminKey());
+  if (canDelete) {
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'frame-del';
+    del.setAttribute('aria-label', `Borrar ${frame.name}`);
+    del.textContent = '×';
+    del.addEventListener('click', () => removeFrame(frame));
+    wrap.appendChild(del);
+  }
+  return wrap;
+}
+
+async function removeFrame(frame) {
+  const where = frame.source === 'server' ? 'para todos' : 'de este teléfono';
+  if (!window.confirm(`¿Borrar "${frame.name}" ${where}?`)) return;
+  try {
+    if (frame.source === 'server') {
+      const key = await askAdminKey();
+      if (!key) return;
+      await deleteServerFrame(key, frame.rawId);
+      lists.server = lists.server.filter((f) => f !== frame);
+    } else {
+      await deleteLocal(frame.rawId);
+      lists.local = lists.local.filter((f) => f !== frame);
+    }
+    if (state.frame === frame) state.frame = PRESETS[0];
+    renderSections();
+    toast('Marco borrado');
+  } catch (err) {
+    handleApiError(err);
   }
 }
 
 function renderStrip() {
   const strip = $('#frame-strip');
   strip.textContent = '';
-  for (const frame of FRAMES) {
+  for (const frame of allFrames()) {
     const chip = document.createElement('button');
     chip.type = 'button';
     chip.className = 'frame-chip';
     chip.setAttribute('role', 'radio');
-    chip.setAttribute('aria-checked', String(frame.id === state.frame.id));
+    chip.setAttribute('aria-checked', String(frame === state.frame));
     chip.appendChild(thumb(frame, 180));
     chip.append(frame.name);
     chip.addEventListener('click', () => {
@@ -374,11 +413,88 @@ function renderStrip() {
 }
 
 function selectFrame(frame) {
+  const sizeChanged = frame.kind === 'png' || state.frame.kind === 'png';
   state.frame = frame;
+  if (sizeChanged) { state.ox = 0; state.oy = 0; }
   clampOffsets();
   syncZoomSlider();
+  if (current === 'edit') { syncAspectUi(); fitPreview(); }
   draw();
 }
+
+// ------------------------------------------------------------------ admin key
+
+const dialog = $('#admin-dialog');
+
+/** Returns a verified admin key (stored or freshly typed), or null if cancelled. */
+function askAdminKey({ force = false } = {}) {
+  const stored = getAdminKey();
+  if (stored && !force) return Promise.resolve(stored);
+  return new Promise((resolve) => {
+    const form = $('#admin-form');
+    const input = $('#admin-key');
+    const error = $('#admin-error');
+    input.value = '';
+    error.hidden = true;
+    const done = (key) => {
+      form.removeEventListener('submit', onSubmit);
+      $('#admin-cancel').removeEventListener('click', onCancel);
+      dialog.close();
+      resolve(key);
+    };
+    const onCancel = () => done(null);
+    const onSubmit = async (e) => {
+      e.preventDefault();
+      const key = input.value.trim();
+      try {
+        await checkAdminKey(key);
+        setAdminKey($('#admin-remember').checked ? key : '');
+        done(key);
+      } catch (err) {
+        error.textContent = err.message || 'No se pudo verificar la clave.';
+        error.hidden = false;
+      }
+    };
+    form.addEventListener('submit', onSubmit);
+    $('#admin-cancel').addEventListener('click', onCancel);
+    dialog.showModal();
+    input.focus();
+  });
+}
+
+function handleApiError(err) {
+  console.error(err);
+  if (err.status === 403) setAdminKey('');
+  toast(err.message || 'Algo falló. Intenta de nuevo.');
+}
+
+// ------------------------------------------------------------------ creator
+
+const creator = initCreator({
+  getPhoto: () => (state.photo ? { photo: state.photo, blur: state.blur } : null),
+  askAdminKey,
+  handleApiError,
+  toast,
+  async onSaved(rec, source) {
+    const frame = await hydrate(rec, source);
+    if (source === 'server') lists.server.unshift(frame);
+    else lists.local.unshift(frame);
+    return frame;
+  },
+  saveLocal,
+  useFrame(frame) {
+    if (state.photo) {
+      selectFrame(frame);
+      show('edit');
+    } else {
+      state.pendingFrame = frame;
+      const note = $('#pending-note');
+      note.textContent = `Marco "${frame.name}" listo ✓ Ahora sube tu foto.`;
+      note.hidden = false;
+      show('home');
+    }
+  },
+});
 
 // ------------------------------------------------------------------ export
 
@@ -387,12 +503,13 @@ $('#export').addEventListener('click', async () => {
   btn.disabled = true;
   btn.textContent = 'Generando…';
   try {
-    const { w, h } = ASPECTS[state.aspect];
+    const { w, h } = dims();
     const c = document.createElement('canvas');
     c.width = w; c.height = h;
-    drawScene(c.getContext('2d'), w, h, renderFrame(state.frame, w, h));
+    drawScene(c.getContext('2d'), w, h, renderFrame(state.frame, w, h), state);
     const blob = await new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('toBlob failed'))), 'image/jpeg', JPEG_QUALITY));
-    const name = `mixnmatch-${state.frame.id}-${state.aspect}-${Date.now().toString(36)}.jpg`;
+    const slug = state.frame.name.toLowerCase().normalize('NFD').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'marco';
+    const name = `mixnmatch-${slug}-${Date.now().toString(36)}.jpg`;
     const file = new File([blob], name, { type: 'image/jpeg' });
 
     const isTouch = matchMedia('(pointer: coarse)').matches;
@@ -429,7 +546,8 @@ function toast(msg) {
   t.textContent = msg;
   t.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => (t.hidden = true), 2800);
+  toastTimer = setTimeout(() => (t.hidden = true), 3200);
 }
 
-loadFonts().then(() => { frameCache.clear(); draw(); });
+loadFonts().then(() => { clearFrameCache(); draw(); creator.redraw(); });
+loadFrameLists();

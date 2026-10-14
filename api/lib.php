@@ -1,0 +1,245 @@
+<?php
+// Shared-frame storage for Mix & Match Pádel. PHP 7.4 compatible.
+//
+// Data (outside the web root):  MM_DATA_DIR/frames.json, MM_DATA_DIR/admin-key.txt
+// Images (public):              <docroot>/uploads/<random>.png
+
+class MmError extends Exception
+{
+    public $status;
+    public function __construct($status, $message)
+    {
+        parent::__construct($message);
+        $this->status = $status;
+    }
+}
+
+const MM_MAX_FRAMES = 60;
+const MM_MAX_BYTES = 15 * 1024 * 1024;
+const MM_MAX_SIDE = 6000;
+const MM_LOGO_TYPES = ['text', 'image', 'none'];
+const MM_METALS = ['gold', 'silver', 'bronze', 'steel', 'red'];
+
+function mm_data_dir()
+{
+    $d = getenv('MM_DATA_DIR');
+    return $d ? $d : '/home/reeldemi/mixnmatch-data';
+}
+
+function mm_upload_dir()
+{
+    $d = getenv('MM_UPLOAD_DIR');
+    return $d ? $d : dirname(__DIR__) . '/uploads';
+}
+
+/** First non-empty line that isn't a # comment. */
+function mm_admin_key($dataDir)
+{
+    $file = $dataDir . '/admin-key.txt';
+    if (!is_file($file)) return '';
+    foreach (preg_split('/\R/', (string) file_get_contents($file)) as $line) {
+        $line = trim($line);
+        if ($line !== '' && $line[0] !== '#') return $line;
+    }
+    return '';
+}
+
+function mm_check_key($dataDir, $given)
+{
+    $key = mm_admin_key($dataDir);
+    if (strlen($key) < 8) {
+        throw new MmError(503, 'Falta configurar la clave de admin en el servidor (admin-key.txt).');
+    }
+    return is_string($given) && $given !== '' && hash_equals($key, $given);
+}
+
+function mm_read_frames($dataDir)
+{
+    $file = $dataDir . '/frames.json';
+    if (!is_file($file)) return [];
+    $data = json_decode((string) file_get_contents($file), true);
+    return is_array($data) ? array_values($data) : [];
+}
+
+/** Runs $fn(frames) -> frames under an exclusive lock and writes the result atomically. */
+function mm_update_frames($dataDir, callable $fn)
+{
+    if (!is_dir($dataDir) && !mkdir($dataDir, 0700, true)) {
+        throw new MmError(500, 'No se pudo crear la carpeta de datos.');
+    }
+    $lock = fopen($dataDir . '/frames.lock', 'c');
+    if (!$lock || !flock($lock, LOCK_EX)) throw new MmError(500, 'No se pudo bloquear el archivo de datos.');
+    try {
+        $frames = $fn(mm_read_frames($dataDir));
+        $tmp = $dataDir . '/frames.json.tmp';
+        $json = json_encode(array_values($frames), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+        if ($json === false || file_put_contents($tmp, $json) === false || !rename($tmp, $dataDir . '/frames.json')) {
+            throw new MmError(500, 'No se pudo guardar.');
+        }
+        return $frames;
+    } finally {
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
+}
+
+function mm_str($v, $fallback, $max)
+{
+    if (!is_string($v)) return $fallback;
+    $v = preg_replace('/[\x00-\x1F\x7F]/u', '', $v);
+    return function_exists('mb_substr') ? mb_substr($v, 0, $max, 'UTF-8') : substr($v, 0, $max);
+}
+
+function mm_hex($v, $fallback)
+{
+    return (is_string($v) && preg_match('/^#[0-9a-fA-F]{6}$/', $v)) ? strtolower($v) : $fallback;
+}
+
+/** Whitelists a design definition; mirrors normalizeDef() in js/frames.js. */
+function mm_clean_def($d)
+{
+    if (!is_array($d)) $d = [];
+    $c = isset($d['colors']) && is_array($d['colors']) ? $d['colors'] : [];
+    $b = isset($d['badge']) && is_array($d['badge']) ? $d['badge'] : [];
+    $k = isset($d['corner']) && is_array($d['corner']) ? $d['corner'] : [];
+    $p = isset($d['place']) && is_array($d['place']) ? $d['place'] : [];
+    $metal = isset($c['metal']) ? $c['metal'] : 'red';
+    if (!in_array($metal, MM_METALS, true)) $metal = mm_hex($metal, 'red');
+    $type = function ($v, $fallback) {
+        return in_array($v, MM_LOGO_TYPES, true) ? $v : $fallback;
+    };
+    return [
+        'layout' => (isset($d['layout']) && $d['layout'] === 'podium') ? 'podium' : 'classic',
+        'colors' => [
+            'primary' => mm_hex(isset($c['primary']) ? $c['primary'] : null, '#e10f1a'),
+            'bg' => mm_hex(isset($c['bg']) ? $c['bg'] : null, '#060606'),
+            'accent' => mm_hex(isset($c['accent']) ? $c['accent'] : null, '#ffffff'),
+            'metal' => $metal,
+        ],
+        'badge' => [
+            'type' => $type(isset($b['type']) ? $b['type'] : null, 'text'),
+            'line1' => mm_str(isset($b['line1']) ? $b['line1'] : null, 'MIX&', 24),
+            'line2' => mm_str(isset($b['line2']) ? $b['line2'] : null, 'MATCH', 24),
+            'line3' => mm_str(isset($b['line3']) ? $b['line3'] : null, 'PÁDEL', 24),
+        ],
+        'corner' => [
+            'type' => $type(isset($k['type']) ? $k['type'] : null, 'text'),
+            'line1' => mm_str(isset($k['line1']) ? $k['line1'] : null, 'ART', 24),
+            'line2' => mm_str(isset($k['line2']) ? $k['line2'] : null, 'P[A]DEL', 24),
+            'line3' => mm_str(isset($k['line3']) ? $k['line3'] : null, 'CLUB', 24),
+        ],
+        'place' => [
+            'num' => mm_str(isset($p['num']) ? $p['num'] : null, '1', 4),
+            'sup' => mm_str(isset($p['sup']) ? $p['sup'] : null, 'ER', 6),
+            'word' => mm_str(isset($p['word']) ? $p['word'] : null, 'LUGAR', 16),
+        ],
+        'balls' => !(isset($d['balls']) && $d['balls'] === false),
+        'seed' => (isset($d['seed']) && is_string($d['seed']) && preg_match('/^[a-z0-9-]{1,32}$/i', $d['seed'])) ? $d['seed'] : null,
+    ];
+}
+
+/**
+ * Validates an uploaded image (must be a real PNG) and stores it under a random name.
+ * Re-encodes with GD when available so only clean pixel data is kept.
+ * Returns the public relative URL.
+ */
+function mm_store_png($tmpPath, $uploadDir)
+{
+    if (!is_file($tmpPath)) throw new MmError(400, 'Archivo no recibido.');
+    $size = filesize($tmpPath);
+    if ($size <= 0 || $size > MM_MAX_BYTES) throw new MmError(413, 'La imagen es muy pesada (máximo 15 MB).');
+    $info = @getimagesize($tmpPath);
+    if (!$info || $info[2] !== IMAGETYPE_PNG) throw new MmError(415, 'La imagen tiene que ser PNG.');
+    if ($info[0] < 16 || $info[1] < 16 || $info[0] > MM_MAX_SIDE || $info[1] > MM_MAX_SIDE) {
+        throw new MmError(415, 'Tamaño de imagen no válido.');
+    }
+    if (!is_dir($uploadDir) && !mkdir($uploadDir, 0755, true)) throw new MmError(500, 'No se pudo crear la carpeta de imágenes.');
+
+    $name = bin2hex(random_bytes(10)) . '.png';
+    $dest = $uploadDir . '/' . $name;
+    $ok = false;
+    if (function_exists('imagecreatefrompng')) {
+        $im = @imagecreatefrompng($tmpPath);
+        if ($im) {
+            imagealphablending($im, false);
+            imagesavealpha($im, true);
+            $ok = imagepng($im, $dest, 6);
+            imagedestroy($im);
+        }
+    }
+    if (!$ok && !copy($tmpPath, $dest)) throw new MmError(500, 'No se pudo guardar la imagen.');
+    @chmod($dest, 0644);
+    return 'uploads/' . $name;
+}
+
+function mm_delete_files($frame, $uploadDir)
+{
+    if (empty($frame['files']) || !is_array($frame['files'])) return;
+    foreach ($frame['files'] as $url) {
+        $base = basename((string) $url);
+        if (preg_match('/^[0-9a-f]{20}\.png$/', $base)) @unlink($uploadDir . '/' . $base);
+    }
+}
+
+/**
+ * Creates a frame. $files maps slot (badge|corner|png) => temp path of an already-validated upload.
+ */
+function mm_save_frame($dataDir, $uploadDir, $post, $files)
+{
+    $kind = isset($post['kind']) && $post['kind'] === 'png' ? 'png' : 'design';
+    $name = trim(mm_str(isset($post['name']) ? $post['name'] : '', '', 40));
+    if ($name === '') $name = $kind === 'png' ? 'Marco PNG' : 'Marco';
+
+    $frame = [
+        'id' => bin2hex(random_bytes(6)),
+        'name' => $name,
+        'kind' => $kind,
+        'files' => [],
+        'created' => time(),
+    ];
+
+    if ($kind === 'png') {
+        if (empty($files['png'])) throw new MmError(400, 'Falta el PNG del marco.');
+        $frame['files']['png'] = mm_store_png($files['png'], $uploadDir);
+    } else {
+        $def = json_decode(isset($post['def']) ? (string) $post['def'] : '', true);
+        $frame['def'] = mm_clean_def($def);
+        foreach (['badge', 'corner'] as $slot) {
+            if ($frame['def'][$slot]['type'] === 'image') {
+                if (empty($files[$slot])) {
+                    $frame['def'][$slot]['type'] = 'none';
+                } else {
+                    $frame['files'][$slot] = mm_store_png($files[$slot], $uploadDir);
+                }
+            }
+        }
+    }
+
+    try {
+        mm_update_frames($dataDir, function ($frames) use ($frame) {
+            if (count($frames) >= MM_MAX_FRAMES) throw new MmError(409, 'Hay demasiados marcos publicados. Borra alguno primero.');
+            array_unshift($frames, $frame);
+            return $frames;
+        });
+    } catch (Exception $e) {
+        mm_delete_files($frame, $uploadDir);
+        throw $e;
+    }
+    return $frame;
+}
+
+function mm_delete_frame($dataDir, $uploadDir, $id)
+{
+    if (!is_string($id) || !preg_match('/^[0-9a-f]{12}$/', $id)) throw new MmError(400, 'Id no válido.');
+    $removed = null;
+    mm_update_frames($dataDir, function ($frames) use ($id, &$removed) {
+        $keep = [];
+        foreach ($frames as $f) {
+            if (isset($f['id']) && $f['id'] === $id) $removed = $f;
+            else $keep[] = $f;
+        }
+        return $keep;
+    });
+    if (!$removed) throw new MmError(404, 'Ese marco ya no existe.');
+    mm_delete_files($removed, $uploadDir);
+}
