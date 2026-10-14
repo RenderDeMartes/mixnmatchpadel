@@ -2,26 +2,79 @@
 <html lang="es">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Mix n Match Padel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0a0a0a">
+  <title>Mix &amp; Match Pádel — Marcos</title>
+  <meta name="description" content="Pon tu foto en un marco de Mix & Match Pádel y descárgala.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🎾</text></svg>">
-  <style>
-    html, body { height: 100%; margin: 0; }
-    body {
-      display: grid; place-items: center; padding: 24px 16px; box-sizing: border-box;
-      background: #0b0d12; color: #e8ebf2; text-align: center;
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    }
-    h1 { font-size: clamp(32px, 8vw, 56px); margin: 12px 0 8px; }
-    p { color: #8a93a6; margin: 0; }
-    .ball { font-size: 72px; }
-  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;600;800&display=swap">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <main>
-    <div class="ball">🎾</div>
-    <h1>Mix n Match Padel</h1>
-    <p>Coming soon, bro.</p>
+
+  <!-- 1. Upload -->
+  <main id="step-upload" class="step step--upload">
+    <div class="hero">
+      <div class="brand">
+        <span class="brand__mix">MIX&amp;</span><span class="brand__match">MATCH</span>
+        <span class="brand__padel">PÁDEL</span>
+      </div>
+      <p class="hero__text">Sube tu foto, elige un marco y descárgala lista para compartir.</p>
+      <label class="btn btn--primary btn--big" for="file">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0-5 5m5-5 5 5M4 20h16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Subir foto
+      </label>
+      <input id="file" type="file" accept="image/*" hidden>
+      <p class="hero__note">Tu foto no se sube a ningún servidor: todo pasa en tu teléfono.</p>
+    </div>
   </main>
+
+  <!-- 2. Pick frame -->
+  <section id="step-frames" class="step step--frames" hidden>
+    <header class="bar">
+      <button class="icon-btn" data-go="upload" aria-label="Volver">‹</button>
+      <h1 class="bar__title">Elige un marco</h1>
+      <span class="bar__spacer"></span>
+    </header>
+    <div class="aspects" role="radiogroup" aria-label="Formato"></div>
+    <div id="frame-grid" class="frame-grid"></div>
+  </section>
+
+  <!-- 3. Edit + export -->
+  <section id="step-edit" class="step step--edit" hidden>
+    <header class="bar">
+      <button class="icon-btn" data-go="frames" aria-label="Volver">‹</button>
+      <h1 class="bar__title">Acomoda tu foto</h1>
+      <button id="reset" class="text-btn" type="button">Reset</button>
+    </header>
+
+    <div id="stage" class="stage">
+      <canvas id="preview"></canvas>
+      <p class="stage__hint">Arrastra para mover · pellizca o usa la rueda para hacer zoom</p>
+    </div>
+
+    <div class="controls">
+      <div class="aspects" role="radiogroup" aria-label="Formato"></div>
+
+      <label class="zoom">
+        <span aria-hidden="true">−</span>
+        <input id="zoom" type="range" min="0" max="1000" value="0" aria-label="Zoom">
+        <span aria-hidden="true">+</span>
+      </label>
+
+      <div id="frame-strip" class="frame-strip"></div>
+
+      <div class="actions">
+        <label class="btn btn--ghost" for="file">Cambiar foto</label>
+        <button id="export" class="btn btn--primary" type="button">Descargar foto</button>
+      </div>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>
